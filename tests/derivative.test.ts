@@ -6,6 +6,7 @@ import {
   derivativeConvergence,
   eligibleDerivativePointIndices,
   findAccelerationReferenceIndex,
+  localTangentAccelerationMps2,
   tangentSpeedKmhAt,
   type DerivativeSample,
 } from '../lib/derivative.ts';
@@ -37,6 +38,27 @@ test('averageAccelerationMps2 rejects zero time and GPS segment crossings', () =
 
 test('tangentSpeedKmhAt converts acceleration back to chart units', () => {
   assert.equal(tangentSpeedKmhAt(12, sample(10, 36), 2.5), 54);
+});
+
+test('localTangentAccelerationMps2 estimates a local slope from several samples', () => {
+  const samples = [
+    sample(0, 0),
+    sample(1, 3.6),
+    sample(2, 7.2),
+    sample(3, 10.8),
+    sample(4, 50),
+  ];
+  assert.ok(Math.abs((localTangentAccelerationMps2(samples, 2) ?? 0) - 1) < 1e-12);
+});
+
+test('localTangentAccelerationMps2 stays inside the selected GPS segment', () => {
+  const samples = [
+    sample(0, 0, null, 0),
+    sample(1, 3.6, null, 0),
+    sample(2, 7.2, 1, 0),
+    sample(2, 100, null, 1),
+  ];
+  assert.equal(localTangentAccelerationMps2(samples, 2), 1);
 });
 
 test('findAccelerationReferenceIndex reconstructs the stored predecessor', () => {

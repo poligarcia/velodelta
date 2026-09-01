@@ -30,6 +30,8 @@ import {
   derivativeConvergence,
   eligibleDerivativePointIndices,
   findAccelerationReferenceIndex,
+  localTangentAccelerationMps2,
+  tangentSpeedKmhAt,
   type DerivativeConvergence,
   type DerivativeSample,
 } from '../lib/derivative';
@@ -450,6 +452,9 @@ function SpeedChart({
   const derivativeAverage = derivativePoint && derivativeQ
     ? averageAccelerationMps2(derivativeQ, derivativePoint)
     : null;
+  const derivativeTangent = derivativePointIndex === null
+    ? null
+    : localTangentAccelerationMps2(derivativeSamples, derivativePointIndex);
   const derivativeDeltaSeconds = derivativePoint && derivativeQ
     ? derivativePoint.time - derivativeQ.time
     : 0;
@@ -462,13 +467,13 @@ function SpeedChart({
   const derivativeState: DerivativeConvergence = derivativePoint
     ? derivativeConvergence(
         derivativeAverage,
-        derivativePoint.accelerationMps2,
+        derivativeTangent,
         derivativeDeltaSeconds,
         derivativeReferenceDeltaSeconds,
       )
     : 'far';
-  const derivativeDifference = derivativePoint && derivativeAverage !== null
-    ? Math.abs(derivativeAverage - (derivativePoint.accelerationMps2 ?? 0))
+  const derivativeDifference = derivativePoint && derivativeAverage !== null && derivativeTangent !== null
+    ? Math.abs(derivativeAverage - derivativeTangent)
     : null;
 
   const setRangeCenteredOn = (centerTime: number, requestedSpan: number) => {
@@ -566,7 +571,7 @@ function SpeedChart({
       !derivativePoint ||
       !derivativeQ ||
       derivativeAverage === null ||
-      derivativePoint.accelerationMps2 === null
+      derivativeTangent === null
     ) {
       return null;
     }
@@ -576,6 +581,8 @@ function SpeedChart({
     const secantSpeedAt = (time: number) =>
       derivativePoint.speedKmh +
       (time - derivativePoint.time) * derivativeAverage * 3.6;
+    const tangentSpeedAt = (time: number) =>
+      tangentSpeedKmhAt(time, derivativePoint, derivativeTangent);
     const pointX = geometry.x(derivativePoint.time);
     const pointY = geometry.y(derivativePoint.speedKmh);
     const qX = geometry.x(derivativeQ.time);
@@ -592,6 +599,12 @@ function SpeedChart({
         x2: plotRight,
         y2: geometry.y(secantSpeedAt(activeRange.end)),
       },
+      tangent: {
+        x1: plotLeft,
+        y1: geometry.y(tangentSpeedAt(activeRange.start)),
+        x2: plotRight,
+        y2: geometry.y(tangentSpeedAt(activeRange.end)),
+      },
     };
   })();
 
@@ -606,10 +619,10 @@ function SpeedChart({
           {effectiveShowSpeed && <span><i className="legend-speed" /> Velocidad</span>}
           {effectiveShowAcceleration && <span><i className="legend-acceleration" /> Aceleración</span>}
           {derivativeMode && derivativePoint && !selectingDerivativePoint && (
-            <span>
-              <i className={`legend-derivative is-${derivativeState}`} />
-              {derivativeState === 'converged' ? '≈ Tangente en P' : 'Secante'}
-            </span>
+            <>
+              <span><i className="legend-secant" /> Secante P–Q</span>
+              <span><i className="legend-tangent" /> Tangente aprox. en P</span>
+            </>
           )}
           {hasChartMetrics && gaps.length > 0 && <span><i className="legend-gap" /> Sin datos</span>}
         </div>
@@ -667,14 +680,14 @@ function SpeedChart({
         <>
           <div className="derivative-comparison" aria-live="polite">
             <span>
-              <small>Aceleración promedio P,Q</small>
+              <small>Pendiente secante P–Q</small>
               <strong>{derivativeAverage >= 0 ? '+' : ''}{derivativeAverage.toFixed(2)} <i>m/s²</i></strong>
             </span>
             <span>
-              <small>Aceleración en P</small>
+              <small>Pendiente tangente en P</small>
               <strong>
-                {(derivativePoint.accelerationMps2 ?? 0) >= 0 ? '+' : ''}
-                {(derivativePoint.accelerationMps2 ?? 0).toFixed(2)} <i>m/s²</i>
+                {(derivativeTangent ?? 0) >= 0 ? '+' : ''}
+                {(derivativeTangent ?? 0).toFixed(2)} <i>m/s²</i>
               </strong>
             </span>
           </div>
@@ -930,6 +943,14 @@ function SpeedChart({
           )}
           {derivativeMode && derivativePlot && !selectingDerivativePoint && (
             <g aria-hidden="true">
+              <line
+                className="derivative-tangent"
+                x1={derivativePlot.tangent.x1}
+                y1={derivativePlot.tangent.y1}
+                x2={derivativePlot.tangent.x2}
+                y2={derivativePlot.tangent.y2}
+                vectorEffect="non-scaling-stroke"
+              />
               <line
                 className={`derivative-secant is-${derivativeState}`}
                 x1={derivativePlot.secant.x1}

@@ -526,9 +526,8 @@ h1 {
 
 .chart-legend .legend-speed { background: var(--green); }
 .chart-legend .legend-acceleration { background: var(--orange); }
-.chart-legend .legend-derivative { background: var(--orange); }
-.chart-legend .legend-derivative.is-approaching { background: #a45a73; }
-.chart-legend .legend-derivative.is-converged { background: var(--violet); }
+.chart-legend .legend-secant { background: var(--orange); }
+.chart-legend .legend-tangent { background: var(--violet); }
 .chart-legend .legend-gap {
   height: 9px;
   border: 1px solid #c4cbc5;
@@ -749,14 +748,20 @@ h1 {
   stroke: var(--orange);
   stroke-linecap: round;
   stroke-width: 3.5;
-  transition: stroke 180ms ease, stroke-width 180ms ease;
+  transition: opacity 180ms ease;
 }
 
-.derivative-secant.is-approaching { stroke: #a45a73; }
+.derivative-secant.is-approaching { opacity: 0.82; }
 
 .derivative-secant.is-converged {
+  opacity: 0.58;
+}
+
+.derivative-tangent {
   stroke: var(--violet);
-  stroke-width: 4.5;
+  stroke-dasharray: 8 5;
+  stroke-linecap: round;
+  stroke-width: 3.5;
 }
 
 .derivative-delta {

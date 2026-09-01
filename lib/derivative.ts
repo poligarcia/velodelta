@@ -32,6 +32,40 @@ export function tangentSpeedKmhAt(
   return point.speedKmh + (time - point.time) * accelerationMps2 * 3.6;
 }
 
+export function localTangentAccelerationMps2(
+  samples: DerivativeSample[],
+  pointIndex: number,
+  radiusSeconds = 1.5,
+) {
+  const point = samples[pointIndex];
+  if (!point || !Number.isFinite(radiusSeconds) || radiusSeconds <= 0) return null;
+
+  const localSamples = samples.filter((sample) =>
+    sample.segment === point.segment &&
+    Math.abs(sample.time - point.time) <= radiusSeconds,
+  );
+  if (localSamples.length < 3) return point.accelerationMps2;
+
+  const meanTime = localSamples.reduce((sum, sample) => sum + sample.time, 0) /
+    localSamples.length;
+  const meanSpeedMps = localSamples.reduce(
+    (sum, sample) => sum + sample.speedKmh / 3.6,
+    0,
+  ) / localSamples.length;
+  const denominator = localSamples.reduce(
+    (sum, sample) => sum + (sample.time - meanTime) ** 2,
+    0,
+  );
+  if (denominator <= Number.EPSILON) return point.accelerationMps2;
+
+  const slope = localSamples.reduce(
+    (sum, sample) => sum +
+      (sample.time - meanTime) * (sample.speedKmh / 3.6 - meanSpeedMps),
+    0,
+  ) / denominator;
+  return Number.isFinite(slope) ? slope : point.accelerationMps2;
+}
+
 export function findAccelerationReferenceIndex(
   samples: DerivativeSample[],
   pointIndex: number,

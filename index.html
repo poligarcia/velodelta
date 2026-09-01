@@ -29,11 +29,173 @@
     <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+    <link
+      rel="apple-touch-startup-image"
+      href="./splash-portrait.png"
+      media="(orientation: portrait)"
+    />
+    <link
+      rel="apple-touch-startup-image"
+      href="./splash-landscape.png"
+      media="(orientation: landscape)"
+    />
+
+    <style>
+      body.splash-active { overflow: hidden; }
+
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        padding:
+          max(30px, env(safe-area-inset-top))
+          max(24px, env(safe-area-inset-right))
+          max(30px, env(safe-area-inset-bottom))
+          max(24px, env(safe-area-inset-left));
+        background:
+          radial-gradient(circle at 78% 16%, rgba(22, 160, 100, 0.16), transparent 32%),
+          #f6f7f2;
+        color: #16211a;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+        opacity: 1;
+        visibility: visible;
+        transition: opacity 280ms ease, visibility 280ms ease;
+      }
+
+      #app-splash.is-hidden {
+        opacity: 0;
+        pointer-events: none;
+        visibility: hidden;
+      }
+
+      .splash-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+        transform: translateY(-2svh);
+        text-align: center;
+      }
+
+      .splash-mark {
+        display: grid;
+        width: clamp(104px, 30vw, 136px);
+        aspect-ratio: 1;
+        place-items: center;
+        border-radius: 30%;
+        background: linear-gradient(145deg, #0a8951, #04643d);
+        box-shadow: 0 22px 45px rgba(8, 115, 69, 0.24);
+      }
+
+      .splash-mark svg {
+        display: block;
+        width: 78%;
+        height: 78%;
+      }
+
+      .splash-copy {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .splash-kicker {
+        margin: 0 0 7px;
+        color: #087345;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.18em;
+      }
+
+      .splash-title {
+        margin: 0;
+        font-size: clamp(2.25rem, 11vw, 3.25rem);
+        font-weight: 820;
+        letter-spacing: -0.065em;
+        line-height: 0.95;
+      }
+
+      .splash-tagline {
+        max-width: 18rem;
+        margin: 13px 0 0;
+        color: #627067;
+        font-size: 0.82rem;
+        font-weight: 620;
+        line-height: 1.4;
+      }
+
+      .splash-progress {
+        width: 68px;
+        height: 3px;
+        margin-top: 24px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(8, 115, 69, 0.14);
+      }
+
+      .splash-progress::after {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        background: #16a064;
+        content: "";
+        transform: scaleX(0.2);
+        transform-origin: left;
+        animation: splash-progress 700ms ease-out forwards;
+      }
+
+      @media (orientation: landscape) and (max-height: 540px) {
+        .splash-brand {
+          flex-direction: row;
+          gap: 30px;
+          transform: none;
+          text-align: left;
+        }
+
+        .splash-mark { width: clamp(96px, 24vh, 128px); }
+        .splash-copy { align-items: flex-start; }
+        .splash-title { font-size: clamp(2.1rem, 9vh, 3rem); }
+        .splash-progress { margin-top: 18px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash { transition: none; }
+        .splash-progress::after { animation: none; transform: scaleX(1); }
+      }
+
+      @keyframes splash-progress {
+        to { transform: scaleX(1); }
+      }
+    </style>
 
     <title>Velocímetro · Tracking en vivo</title>
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="splash-active">
+    <div id="app-splash" role="status" aria-label="Iniciando VeloDelta">
+      <div class="splash-brand">
+        <div class="splash-mark" aria-hidden="true">
+          <svg viewBox="0 0 100 100" role="presentation">
+            <g fill="none" stroke="#f6f7f2" stroke-linecap="round">
+              <path d="M 15 72 A 38 38 0 1 1 85 72" stroke-width="8" />
+              <path d="M 50 22 V 31 M 25 34 L 32 41 M 18 59 H 28 M 72 59 H 82" stroke-width="6" />
+            </g>
+            <path d="M 50 65 L 73 36 L 57 70 Z" fill="#f6f7f2" />
+            <circle cx="50" cy="65" r="9" fill="#f6f7f2" />
+          </svg>
+        </div>
+        <div class="splash-copy">
+          <p class="splash-kicker">VELOCÍMETRO · GPS</p>
+          <p class="splash-title">VeloDelta</p>
+          <p class="splash-tagline">Movimiento, velocidad y cambio en vivo.</p>
+          <span class="splash-progress" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+    <div id="root" aria-hidden="true"></div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>

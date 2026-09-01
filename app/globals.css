@@ -9,6 +9,7 @@
   --green: #16a064;
   --green-dark: #087345;
   --orange: #d7621d;
+  --violet: #7554c7;
   --red: #c94235;
 }
 
@@ -487,9 +488,17 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   min-height: 32px;
   padding: 0 4px;
+}
+
+.chart-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .chart-legend {
@@ -517,6 +526,9 @@ h1 {
 
 .chart-legend .legend-speed { background: var(--green); }
 .chart-legend .legend-acceleration { background: var(--orange); }
+.chart-legend .legend-derivative { background: var(--orange); }
+.chart-legend .legend-derivative.is-approaching { background: #a45a73; }
+.chart-legend .legend-derivative.is-converged { background: var(--violet); }
 .chart-legend .legend-gap {
   height: 9px;
   border: 1px solid #c4cbc5;
@@ -539,6 +551,102 @@ h1 {
 .chart-reset:disabled {
   color: #9ca69f;
   opacity: 0.65;
+}
+
+.chart-derivative-enter,
+.chart-derivative-exit {
+  min-height: 32px;
+  padding: 5px 9px;
+  border-radius: 9px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.chart-derivative-enter {
+  border: 0;
+  background: var(--ink);
+  color: #fff;
+}
+
+.chart-derivative-exit {
+  border: 1px solid #cbbfe5;
+  background: #f2eefb;
+  color: #52348f;
+}
+
+.derivative-instruction {
+  margin: 4px 3px 7px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: #eef7f1;
+  color: var(--green-dark);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.derivative-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 5px 3px 7px;
+}
+
+.derivative-comparison span,
+.derivative-deltas span {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f7f8f5;
+}
+
+.derivative-comparison small,
+.derivative-deltas small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 0.56rem;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.derivative-comparison strong,
+.derivative-deltas strong {
+  font-size: 0.88rem;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.derivative-comparison i {
+  color: var(--muted);
+  font-size: 0.7em;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.derivative-state {
+  min-height: 31px;
+  margin: 0 3px 5px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: #fff1e6;
+  color: #8b3b0d;
+  font-size: 0.66rem;
+  font-weight: 780;
+  text-align: center;
+}
+
+.derivative-state.is-approaching {
+  background: #f4effb;
+  color: #5e3f99;
+}
+
+.derivative-state.is-converged {
+  background: #e3f6e9;
+  color: var(--green-dark);
 }
 
 .chart {
@@ -577,6 +685,74 @@ h1 {
 }
 
 .speed-dot { fill: var(--green); }
+
+.derivative-focus-area {
+  fill: rgba(117, 84, 199, 0.08);
+  stroke: rgba(117, 84, 199, 0.7);
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+
+.derivative-secant {
+  stroke: var(--orange);
+  stroke-linecap: round;
+  stroke-width: 3.5;
+  transition: stroke 180ms ease, stroke-width 180ms ease;
+}
+
+.derivative-secant.is-approaching { stroke: #a45a73; }
+
+.derivative-secant.is-converged {
+  stroke: var(--violet);
+  stroke-width: 4.5;
+}
+
+.derivative-delta {
+  fill: none;
+  stroke: rgba(215, 98, 29, 0.75);
+  stroke-dasharray: 4 4;
+  stroke-width: 1.5;
+}
+
+.derivative-point-p {
+  fill: var(--green);
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+.derivative-point-q {
+  fill: var(--orange);
+  stroke: #fff;
+  stroke-width: 3;
+  transition: fill 180ms ease, opacity 180ms ease;
+}
+
+.derivative-point-q.is-approaching { fill: #a45a73; }
+
+.derivative-point-q.is-converged {
+  fill: var(--violet);
+  opacity: 0.56;
+}
+
+.derivative-point-label {
+  fill: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 12px;
+  font-weight: 820;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.derivative-q-hit {
+  fill: transparent;
+  stroke: transparent;
+  cursor: ew-resize;
+  pointer-events: all;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
 
 .acceleration-line {
   fill: none;
@@ -630,6 +806,13 @@ h1 {
   -webkit-tap-highlight-color: transparent;
 }
 
+.derivative-chart-interaction {
+  cursor: default;
+  touch-action: pan-y;
+}
+
+.derivative-chart-interaction.is-selecting { cursor: crosshair; }
+
 .chart-readout {
   display: grid;
   gap: 6px;
@@ -664,6 +847,179 @@ h1 {
   color: var(--muted);
   font-size: 0.64rem;
   font-weight: 650;
+  text-align: center;
+}
+
+.derivative-controls {
+  margin: 3px;
+}
+
+.derivative-rail {
+  display: block;
+  padding: 10px 11px 6px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f7f8f5;
+}
+
+.derivative-rail > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.derivative-rail small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 720;
+}
+
+.derivative-rail strong {
+  font-size: 0.72rem;
+}
+
+.derivative-rail input {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  accent-color: var(--orange);
+}
+
+.derivative-formula {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 680;
+  text-align: center;
+}
+
+.derivative-formula strong { color: var(--ink); }
+
+.derivative-detail-toggle {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  border: 1px solid #cbbfe5;
+  border-radius: 10px;
+  background: #f4f0fc;
+  color: #52348f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.derivative-magnifier {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #d8cdec;
+  border-radius: 12px;
+  background: #fbf9ff;
+}
+
+.derivative-magnifier-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: #52348f;
+  font-size: 0.7rem;
+}
+
+.derivative-magnifier-heading span {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 740;
+}
+
+.derivative-magnifier-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 720;
+}
+
+.derivative-magnifier-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.derivative-magnifier-legend i {
+  display: inline-block;
+  width: 13px;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.derivative-magnifier-legend .is-curve { background: var(--green); }
+.derivative-magnifier-legend .is-secant { background: var(--orange); }
+.derivative-magnifier-legend .is-tangent { background: var(--violet); }
+
+.derivative-magnifier-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.derivative-magnifier-background { fill: #fff; }
+
+.derivative-magnifier-curve,
+.derivative-magnifier-secant,
+.derivative-magnifier-tangent {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.derivative-magnifier-curve {
+  stroke: var(--green);
+  stroke-width: 3;
+}
+
+.derivative-magnifier-secant {
+  stroke: var(--orange);
+  stroke-width: 3;
+}
+
+.derivative-magnifier-tangent {
+  stroke: var(--violet);
+  stroke-dasharray: 5 4;
+  stroke-width: 2.5;
+}
+
+.derivative-magnifier-point-p {
+  fill: var(--green);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.derivative-magnifier-point-q {
+  fill: var(--orange);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.derivative-deltas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.derivative-hint {
+  margin: 7px 3px 2px;
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 650;
+  line-height: 1.35;
   text-align: center;
 }
 

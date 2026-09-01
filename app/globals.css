@@ -649,6 +649,53 @@ h1 {
   color: var(--green-dark);
 }
 
+.derivative-zoom-controls {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 3px 7px;
+}
+
+.derivative-zoom-controls button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #cbbfe5;
+  border-radius: 12px;
+  background: #f4f0fc;
+  color: #52348f;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.derivative-zoom-controls button:disabled {
+  color: #a8a1b7;
+  opacity: 0.55;
+}
+
+.derivative-zoom-controls span {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  color: #52348f;
+  text-align: center;
+}
+
+.derivative-zoom-controls small {
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 720;
+}
+
+.derivative-zoom-controls strong {
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
 .chart {
   display: block;
   width: 100%;
@@ -686,11 +733,16 @@ h1 {
 
 .speed-dot { fill: var(--green); }
 
-.derivative-focus-area {
-  fill: rgba(117, 84, 199, 0.08);
-  stroke: rgba(117, 84, 199, 0.7);
-  stroke-dasharray: 5 4;
-  stroke-width: 1.5;
+.derivative-p-guide {
+  stroke: var(--violet);
+  stroke-dasharray: 5 5;
+  stroke-width: 2;
+}
+
+.derivative-p-preview {
+  fill: #fff;
+  stroke: var(--violet);
+  stroke-width: 4;
 }
 
 .derivative-secant {
@@ -896,116 +948,6 @@ h1 {
 }
 
 .derivative-formula strong { color: var(--ink); }
-
-.derivative-detail-toggle {
-  width: 100%;
-  min-height: 44px;
-  margin-top: 8px;
-  border: 1px solid #cbbfe5;
-  border-radius: 10px;
-  background: #f4f0fc;
-  color: #52348f;
-  font-size: 0.72rem;
-  font-weight: 800;
-  touch-action: manipulation;
-}
-
-.derivative-magnifier {
-  margin-top: 8px;
-  padding: 10px;
-  border: 1px solid #d8cdec;
-  border-radius: 12px;
-  background: #fbf9ff;
-}
-
-.derivative-magnifier-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-  color: #52348f;
-  font-size: 0.7rem;
-}
-
-.derivative-magnifier-heading span {
-  color: var(--muted);
-  font-size: 0.64rem;
-  font-weight: 740;
-}
-
-.derivative-magnifier-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px 10px;
-  margin-bottom: 6px;
-  color: var(--muted);
-  font-size: 0.58rem;
-  font-weight: 720;
-}
-
-.derivative-magnifier-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.derivative-magnifier-legend i {
-  display: inline-block;
-  width: 13px;
-  height: 3px;
-  border-radius: 999px;
-}
-
-.derivative-magnifier-legend .is-curve { background: var(--green); }
-.derivative-magnifier-legend .is-secant { background: var(--orange); }
-.derivative-magnifier-legend .is-tangent { background: var(--violet); }
-
-.derivative-magnifier-chart {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: hidden;
-  border-radius: 8px;
-}
-
-.derivative-magnifier-background { fill: #fff; }
-
-.derivative-magnifier-curve,
-.derivative-magnifier-secant,
-.derivative-magnifier-tangent {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.derivative-magnifier-curve {
-  stroke: var(--green);
-  stroke-width: 3;
-}
-
-.derivative-magnifier-secant {
-  stroke: var(--orange);
-  stroke-width: 3;
-}
-
-.derivative-magnifier-tangent {
-  stroke: var(--violet);
-  stroke-dasharray: 5 4;
-  stroke-width: 2.5;
-}
-
-.derivative-magnifier-point-p {
-  fill: var(--green);
-  stroke: #fff;
-  stroke-width: 1.5;
-}
-
-.derivative-magnifier-point-q {
-  fill: var(--orange);
-  stroke: #fff;
-  stroke-width: 1.5;
-}
 
 .derivative-deltas {
   display: grid;

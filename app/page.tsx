@@ -30,7 +30,6 @@ import {
   derivativeConvergence,
   eligibleDerivativePointIndices,
   findAccelerationReferenceIndex,
-  tangentSpeedKmhAt,
   type DerivativeConvergence,
   type DerivativeSample,
 } from '../lib/derivative';
@@ -44,13 +43,11 @@ type Sample = {
 
 type Gap = { start: number; end: number };
 type ChartRange = { start: number; end: number };
-type PlotCrop = { x: number; y: number; width: number; height: number; zoom: number };
 
 const MAX_PLAUSIBLE_SPEED_MPS = 25;
 const MAX_PLAUSIBLE_ACCELERATION_MPS2 = 12;
 const MAX_ACCEPTABLE_ACCURACY_METERS = 80;
 const MAX_SESSION_FILE_BYTES = 25_000_000;
-const DERIVATIVE_MAGNIFIER_ASPECT = 2.4;
 const SETTINGS_STORAGE_KEY = 'velocimetro-settings-v1';
 const DEFAULT_SETTINGS: SessionSettings = {
   chart: ['speed'],
@@ -72,41 +69,6 @@ const FLOATING_METRICS: Array<{
   { id: 'time', label: 'Tiempo', detail: 'duración' },
   { id: 'distance', label: 'Distancia', detail: 'm o km' },
 ];
-
-function fitPlotCrop(
-  bounds: { left: number; right: number; top: number; bottom: number },
-  requested: { left: number; right: number; top: number; bottom: number },
-): PlotCrop {
-  const plotWidth = bounds.right - bounds.left;
-  const plotHeight = bounds.bottom - bounds.top;
-  let width = clamp(requested.right - requested.left, 36, plotWidth);
-  let height = clamp(requested.bottom - requested.top, 24, plotHeight);
-
-  if (width / height < DERIVATIVE_MAGNIFIER_ASPECT) {
-    width = Math.min(plotWidth, height * DERIVATIVE_MAGNIFIER_ASPECT);
-  } else {
-    height = Math.min(plotHeight, width / DERIVATIVE_MAGNIFIER_ASPECT);
-  }
-
-  if (width / height < DERIVATIVE_MAGNIFIER_ASPECT) {
-    height = width / DERIVATIVE_MAGNIFIER_ASPECT;
-  } else if (width / height > DERIVATIVE_MAGNIFIER_ASPECT) {
-    width = height * DERIVATIVE_MAGNIFIER_ASPECT;
-  }
-
-  const centerX = (requested.left + requested.right) / 2;
-  const centerY = (requested.top + requested.bottom) / 2;
-  const x = clamp(centerX - width / 2, bounds.left, bounds.right - width);
-  const y = clamp(centerY - height / 2, bounds.top, bounds.bottom - height);
-
-  return {
-    x,
-    y,
-    width,
-    height,
-    zoom: Math.max(1, plotWidth / width),
-  };
-}
 
 type ScreenWakeLockSentinel = EventTarget & {
   readonly released: boolean;
@@ -161,6 +123,7 @@ function SpeedChart({
   showSpeed,
   showAcceleration,
   analysisAvailable,
+  onAnalysisModeChange,
 }: {
   samples: Sample[];
   gaps: Gap[];
@@ -168,6 +131,7 @@ function SpeedChart({
   showSpeed: boolean;
   showAcceleration: boolean;
   analysisAvailable: boolean;
+  onAnalysisModeChange: (active: boolean) => void;
 }) {
   const chartContainer = useRef<HTMLDivElement | null>(null);
   const [width, setChartWidth] = useState(720);
@@ -187,8 +151,8 @@ function SpeedChart({
   const [derivativeMode, setDerivativeMode] = useState(false);
   const [selectingDerivativePoint, setSelectingDerivativePoint] = useState(false);
   const [derivativePointIndex, setDerivativePointIndex] = useState<number | null>(null);
+  const [derivativeDraftPointIndex, setDerivativeDraftPointIndex] = useState<number | null>(null);
   const [derivativeQIndex, setDerivativeQIndex] = useState<number | null>(null);
-  const [derivativeDetailOpen, setDerivativeDetailOpen] = useState(false);
   const savedChartState = useRef<{
     range: ChartRange | null;
     selectedSample: Sample | null;
@@ -225,11 +189,12 @@ function SpeedChart({
     [derivativeSamples],
   );
   const derivativeDragPointer = useRef<number | null>(null);
-  const derivativeSelectionPointer = useRef<{
-    pointerId: number;
-    x: number;
-    y: number;
-  } | null>(null);
+  const derivativeSelectionPointer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => onAnalysisModeChange(false),
+    [onAnalysisModeChange],
+  );
 
   useEffect(() => {
     const container = chartContainer.current;
@@ -444,6 +409,16 @@ function SpeedChart({
   const derivativePoint = derivativePointIndex === null
     ? null
     : derivativeSamples[derivativePointIndex] ?? null;
+  const derivativeDraftPoint = derivativeDraftPointIndex === null
+    ? null
+    : derivativeSamples[derivativeDraftPointIndex] ?? null;
+  const visibleDerivativePointOptions = useMemo(
+    () => derivativePointOptions.filter((index) => {
+      const point = derivativeSamples[index];
+      return point.time >= activeRange.start && point.time <= activeRange.end;
+    }),
+    [activeRange, derivativePointOptions, derivativeSamples],
+  );
   const derivativeReferenceIndex = derivativePointIndex === null
     ? null
     : findAccelerationReferenceIndex(derivativeSamples, derivativePointIndex);
@@ -492,6 +467,30 @@ function SpeedChart({
         derivativeReferenceDeltaSeconds,
       )
     : 'far';
+  const derivativeDifference = derivativePoint && derivativeAverage !== null
+    ? Math.abs(derivativeAverage - (derivativePoint.accelerationMps2 ?? 0))
+    : null;
+
+  const setRangeCenteredOn = (centerTime: number, requestedSpan: number) => {
+    const span = clamp(requestedSpan, 5, domainMax);
+    if (span >= domainMax * 0.995) {
+      setRange(null);
+      return;
+    }
+    const start = clamp(centerTime - span / 2, 0, Math.max(0, domainMax - span));
+    setRange({ start, end: start + span });
+  };
+
+  const derivativeIndexFromClient = (clientX: number, element: SVGSVGElement) => {
+    if (visibleDerivativePointOptions.length === 0) return null;
+    const targetTime = timeFromClient(clientX, element, activeRange);
+    return visibleDerivativePointOptions.reduce((best, index) =>
+      Math.abs(derivativeSamples[index].time - targetTime) <
+      Math.abs(derivativeSamples[best].time - targetTime)
+        ? index
+        : best,
+    );
+  };
 
   const chooseDerivativePoint = (index: number) => {
     const point = derivativeSamples[index];
@@ -505,7 +504,8 @@ function SpeedChart({
     }
     if (candidates.length === 0) return;
 
-    const targetTime = point.time - 5;
+    const visibleSpan = activeRange.end - activeRange.start;
+    const targetTime = point.time - Math.min(5, visibleSpan * 0.3);
     const defaultQ = candidates.reduce((best, candidate) =>
       Math.abs(derivativeSamples[candidate].time - targetTime) <
       Math.abs(derivativeSamples[best].time - targetTime)
@@ -516,37 +516,13 @@ function SpeedChart({
     setDerivativePointIndex(index);
     setDerivativeQIndex(defaultQ);
     setSelectingDerivativePoint(false);
-    setDerivativeDetailOpen(false);
-  };
-
-  const chooseDerivativePointFromClient = (clientX: number, element: SVGSVGElement) => {
-    const targetTime = timeFromClient(clientX, element, activeRange);
-    const visibleOptions = derivativePointOptions.filter((index) => {
-      const point = derivativeSamples[index];
-      return point.time >= activeRange.start && point.time <= activeRange.end;
-    });
-    if (visibleOptions.length === 0) return;
-    const nearest = visibleOptions.reduce((best, index) =>
-      Math.abs(derivativeSamples[index].time - targetTime) <
-      Math.abs(derivativeSamples[best].time - targetTime)
-        ? index
-        : best,
-    );
-    chooseDerivativePoint(nearest);
+    setDerivativeDraftPointIndex(null);
+    setRangeCenteredOn(point.time, visibleSpan);
   };
 
   const updateDerivativeQ = (index: number) => {
     if (!derivativePoint || !derivativeReference || !derivativeQOptions.includes(index)) return;
-    const nextQ = derivativeSamples[index];
-    const nextAverage = averageAccelerationMps2(nextQ, derivativePoint);
-    const nextState = derivativeConvergence(
-      nextAverage,
-      derivativePoint.accelerationMps2,
-      nextQ.time - derivativePoint.time,
-      derivativePoint.time - derivativeReference.time,
-    );
     setDerivativeQIndex(index);
-    if (nextState === 'far') setDerivativeDetailOpen(false);
   };
 
   const updateDerivativeQFromClient = (clientX: number, element: SVGSVGElement) => {
@@ -563,13 +539,13 @@ function SpeedChart({
 
   const enterDerivativeMode = () => {
     savedChartState.current = { range, selectedSample };
-    setRange(null);
     setSelectedSample(null);
     setDerivativeMode(true);
+    onAnalysisModeChange(true);
     setSelectingDerivativePoint(true);
     setDerivativePointIndex(null);
+    setDerivativeDraftPointIndex(null);
     setDerivativeQIndex(null);
-    setDerivativeDetailOpen(false);
   };
 
   const exitDerivativeMode = () => {
@@ -577,10 +553,11 @@ function SpeedChart({
     setRange(saved?.range ?? null);
     setSelectedSample(saved?.selectedSample ?? null);
     setDerivativeMode(false);
+    onAnalysisModeChange(false);
     setSelectingDerivativePoint(false);
     setDerivativePointIndex(null);
+    setDerivativeDraftPointIndex(null);
     setDerivativeQIndex(null);
-    setDerivativeDetailOpen(false);
     savedChartState.current = null;
   };
 
@@ -596,52 +573,13 @@ function SpeedChart({
 
     const plotLeft = padding.left;
     const plotRight = width - padding.right;
-    const plotTop = padding.top;
-    const plotBottom = height - padding.bottom;
-    const innerWidth = plotRight - plotLeft;
-    const visibleDuration = activeRange.end - activeRange.start;
-    const timeFromSvgX = (svgX: number) =>
-      activeRange.start + ((svgX - plotLeft) / innerWidth) * visibleDuration;
     const secantSpeedAt = (time: number) =>
       derivativePoint.speedKmh +
       (time - derivativePoint.time) * derivativeAverage * 3.6;
-    const tangentSpeedAt = (time: number) =>
-      tangentSpeedKmhAt(time, derivativePoint, derivativePoint.accelerationMps2!);
     const pointX = geometry.x(derivativePoint.time);
     const pointY = geometry.y(derivativePoint.speedKmh);
     const qX = geometry.x(derivativeQ.time);
     const qY = geometry.y(derivativeQ.speedKmh);
-
-    const requestedLeft = Math.min(pointX, qX) - 28;
-    const requestedRight = Math.max(pointX, qX) + 28;
-    const localLeft = clamp(requestedLeft, plotLeft, plotRight);
-    const localRight = clamp(requestedRight, plotLeft, plotRight);
-    const localStartTime = timeFromSvgX(localLeft);
-    const localEndTime = timeFromSvgX(localRight);
-    const localYValues = samples
-      .filter((sample) =>
-        sample.segment === derivativePoint.segment &&
-        sample.time >= localStartTime &&
-        sample.time <= localEndTime,
-      )
-      .map((sample) => geometry.y(sample.speed));
-    localYValues.push(
-      pointY,
-      qY,
-      geometry.y(secantSpeedAt(localStartTime)),
-      geometry.y(secantSpeedAt(localEndTime)),
-      geometry.y(tangentSpeedAt(localStartTime)),
-      geometry.y(tangentSpeedAt(localEndTime)),
-    );
-    const crop = fitPlotCrop(
-      { left: plotLeft, right: plotRight, top: plotTop, bottom: plotBottom },
-      {
-        left: requestedLeft,
-        right: requestedRight,
-        top: Math.min(...localYValues) - 18,
-        bottom: Math.max(...localYValues) + 18,
-      },
-    );
 
     return {
       pointX,
@@ -654,13 +592,6 @@ function SpeedChart({
         x2: plotRight,
         y2: geometry.y(secantSpeedAt(activeRange.end)),
       },
-      tangent: {
-        x1: plotLeft,
-        y1: geometry.y(tangentSpeedAt(activeRange.start)),
-        x2: plotRight,
-        y2: geometry.y(tangentSpeedAt(activeRange.end)),
-      },
-      crop,
     };
   })();
 
@@ -674,7 +605,7 @@ function SpeedChart({
         <div className="chart-legend" aria-label="Series del gráfico">
           {effectiveShowSpeed && <span><i className="legend-speed" /> Velocidad</span>}
           {effectiveShowAcceleration && <span><i className="legend-acceleration" /> Aceleración</span>}
-          {derivativeMode && derivativePoint && (
+          {derivativeMode && derivativePoint && !selectingDerivativePoint && (
             <span>
               <i className={`legend-derivative is-${derivativeState}`} />
               {derivativeState === 'converged' ? '≈ Tangente en P' : 'Secante'}
@@ -707,7 +638,10 @@ function SpeedChart({
                 className="chart-reset"
                 type="button"
                 aria-pressed={selectingDerivativePoint}
-                onClick={() => setSelectingDerivativePoint((selecting) => !selecting)}
+                onClick={() => {
+                  setDerivativeDraftPointIndex(null);
+                  setSelectingDerivativePoint((selecting) => !selecting);
+                }}
               >
                 {derivativePoint ? 'Cambiar P' : 'Elegir P'}
               </button>
@@ -720,12 +654,16 @@ function SpeedChart({
       </div>
       {derivativeMode && selectingDerivativePoint && (
         <p className="derivative-instruction" role="status">
-          {derivativePoint
-            ? 'Tocá otro punto de la curva para mover P.'
-            : 'Tocá un punto de la curva para fijar P.'}
+          {visibleDerivativePointOptions.length === 0
+            ? 'No hay puntos con aceleración calculable en este encuadre. Salí y alejá el zoom.'
+            : derivativeDraftPoint
+              ? `P provisional · ${derivativeDraftPoint.time.toFixed(1)} s · ${derivativeDraftPoint.speedKmh.toFixed(1)} km/h`
+              : derivativePoint
+                ? 'Deslizá horizontalmente para mover P y soltá para fijarla.'
+                : 'Deslizá horizontalmente para elegir P y soltá para fijarla.'}
         </p>
       )}
-      {derivativeMode && derivativePoint && derivativeAverage !== null && (
+      {derivativeMode && derivativePoint && derivativeAverage !== null && !selectingDerivativePoint && (
         <>
           <div className="derivative-comparison" aria-live="polite">
             <span>
@@ -742,11 +680,39 @@ function SpeedChart({
           </div>
           <p className={`derivative-state is-${derivativeState}`} aria-live="polite">
             {derivativeState === 'converged'
-              ? `≈ Coinciden · diferencia ${Math.abs(derivativeAverage - (derivativePoint.accelerationMps2 ?? 0)).toFixed(2)} m/s²`
-              : derivativeState === 'approaching'
-                ? `Se acercan · diferencia ${Math.abs(derivativeAverage - (derivativePoint.accelerationMps2 ?? 0)).toFixed(2)} m/s²`
-                : 'Acercá Q a P'}
+              ? `≈ Coinciden · diferencia ${derivativeDifference?.toFixed(2)} m/s²`
+              : derivativeDifference !== null && derivativeDifference <= 0.05
+                ? `Casi coinciden · diferencia ${derivativeDifference.toFixed(2)} m/s²`
+                : `Todavía no coinciden · diferencia ${derivativeDifference?.toFixed(2)} m/s²`}
           </p>
+          <div className="derivative-zoom-controls" aria-label="Zoom centrado en P">
+            <button
+              type="button"
+              aria-label="Alejar el gráfico manteniendo P centrada"
+              onClick={() => setRangeCenteredOn(
+                derivativePoint.time,
+                (activeRange.end - activeRange.start) * 1.5,
+              )}
+              disabled={activeRange.end - activeRange.start >= domainMax * 0.995}
+            >
+              −
+            </button>
+            <span>
+              <small>P centrada</small>
+              <strong>{derivativePoint.time.toFixed(1)} s</strong>
+            </span>
+            <button
+              type="button"
+              aria-label="Acercar el gráfico manteniendo P centrada"
+              onClick={() => setRangeCenteredOn(
+                derivativePoint.time,
+                (activeRange.end - activeRange.start) / 1.5,
+              )}
+              disabled={activeRange.end - activeRange.start <= 5.005}
+            >
+              +
+            </button>
+          </div>
         </>
       )}
       <svg
@@ -937,17 +903,33 @@ function SpeedChart({
               )}
             </g>
           )}
-          {derivativeMode && derivativePlot && (
+          {derivativeMode && selectingDerivativePoint && derivativeDraftPoint && (
             <g aria-hidden="true">
-              {derivativeDetailOpen && derivativeState !== 'far' && (
-                <rect
-                  className="derivative-focus-area"
-                  x={derivativePlot.crop.x}
-                  y={derivativePlot.crop.y}
-                  width={derivativePlot.crop.width}
-                  height={derivativePlot.crop.height}
-                />
-              )}
+              <line
+                className="derivative-p-guide"
+                x1={geometry.x(derivativeDraftPoint.time)}
+                x2={geometry.x(derivativeDraftPoint.time)}
+                y1={padding.top}
+                y2={height - padding.bottom}
+              />
+              <circle
+                className="derivative-p-preview"
+                cx={geometry.x(derivativeDraftPoint.time)}
+                cy={geometry.y(derivativeDraftPoint.speedKmh)}
+                r="8"
+              />
+              <text
+                className="derivative-point-label"
+                x={geometry.x(derivativeDraftPoint.time)}
+                y={geometry.y(derivativeDraftPoint.speedKmh) - 14}
+                textAnchor="middle"
+              >
+                P
+              </text>
+            </g>
+          )}
+          {derivativeMode && derivativePlot && !selectingDerivativePoint && (
+            <g aria-hidden="true">
               <line
                 className={`derivative-secant is-${derivativeState}`}
                 x1={derivativePlot.secant.x1}
@@ -1018,27 +1000,46 @@ function SpeedChart({
               width={width - padding.left - padding.right}
               height={height - padding.top - padding.bottom}
               onPointerDown={(event) => {
-                derivativeSelectionPointer.current = {
-                  pointerId: event.pointerId,
-                  x: event.clientX,
-                  y: event.clientY,
-                };
+                if (!selectingDerivativePoint) return;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                derivativeSelectionPointer.current = event.pointerId;
+                setDerivativeDraftPointIndex(
+                  derivativeIndexFromClient(
+                    event.clientX,
+                    event.currentTarget.ownerSVGElement!,
+                  ),
+                );
               }}
-              onPointerUp={(event) => {
-                const start = derivativeSelectionPointer.current;
-                derivativeSelectionPointer.current = null;
+              onPointerMove={(event) => {
                 if (
                   !selectingDerivativePoint ||
-                  !start ||
-                  start.pointerId !== event.pointerId ||
-                  Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
+                  derivativeSelectionPointer.current !== event.pointerId
                 ) {
                   return;
                 }
-                chooseDerivativePointFromClient(event.clientX, event.currentTarget.ownerSVGElement!);
+                setDerivativeDraftPointIndex(
+                  derivativeIndexFromClient(
+                    event.clientX,
+                    event.currentTarget.ownerSVGElement!,
+                  ),
+                );
+              }}
+              onPointerUp={(event) => {
+                const isActivePointer = derivativeSelectionPointer.current === event.pointerId;
+                derivativeSelectionPointer.current = null;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+                if (!selectingDerivativePoint || !isActivePointer) return;
+                const selectedIndex = derivativeIndexFromClient(
+                  event.clientX,
+                  event.currentTarget.ownerSVGElement!,
+                );
+                if (selectedIndex !== null) chooseDerivativePoint(selectedIndex);
               }}
               onPointerCancel={() => {
                 derivativeSelectionPointer.current = null;
+                setDerivativeDraftPointIndex(null);
               }}
             />
             {derivativePlot && !selectingDerivativePoint && (
@@ -1080,7 +1081,7 @@ function SpeedChart({
           </>
         )}
       </svg>
-      {derivativeMode && derivativePoint && derivativeQ && derivativeAverage !== null && (
+      {derivativeMode && derivativePoint && derivativeQ && derivativeAverage !== null && !selectingDerivativePoint && (
         <div className="derivative-controls">
           <label className="derivative-rail">
             <span>
@@ -1106,87 +1107,6 @@ function SpeedChart({
             {' = '}
             <strong>{derivativeAverage.toFixed(2)} m/s²</strong>
           </p>
-          {derivativeState !== 'far' && (
-            <button
-              className="derivative-detail-toggle"
-              type="button"
-              aria-expanded={derivativeDetailOpen}
-              onClick={() => setDerivativeDetailOpen((open) => !open)}
-            >
-              {derivativeDetailOpen ? 'Ocultar acercamiento' : 'Ver acercamiento'}
-            </button>
-          )}
-          {derivativeDetailOpen && derivativeState !== 'far' && derivativePlot && (
-            <div className="derivative-magnifier">
-              <div className="derivative-magnifier-heading">
-                <strong>Ampliación alrededor de P</strong>
-                <span>escala x/y uniforme</span>
-              </div>
-              <div className="derivative-magnifier-legend" aria-label="Elementos de la ampliación">
-                <span><i className="is-curve" /> Curva original</span>
-                <span><i className="is-secant" /> Secante</span>
-                <span><i className="is-tangent" /> Tangente</span>
-              </div>
-              <svg
-                className="derivative-magnifier-chart"
-                viewBox={`${derivativePlot.crop.x} ${derivativePlot.crop.y} ${derivativePlot.crop.width} ${derivativePlot.crop.height}`}
-                preserveAspectRatio="xMidYMid meet"
-                role="img"
-                aria-label="Ampliación geométrica de la curva original, la secante y la tangente alrededor de P"
-              >
-                <rect
-                  className="derivative-magnifier-background"
-                  x={derivativePlot.crop.x}
-                  y={derivativePlot.crop.y}
-                  width={derivativePlot.crop.width}
-                  height={derivativePlot.crop.height}
-                />
-                {geometry.groups.map((group) => {
-                  const points = group
-                    .map((sample) => `${geometry.x(sample.time)},${geometry.y(sample.speed)}`)
-                    .join(' ');
-                  return group.length > 1 ? (
-                    <polyline
-                      className="derivative-magnifier-curve"
-                      key={`magnifier-speed-${group[0].segment}`}
-                      points={points}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  ) : null;
-                })}
-                <line
-                  className="derivative-magnifier-secant"
-                  x1={derivativePlot.secant.x1}
-                  y1={derivativePlot.secant.y1}
-                  x2={derivativePlot.secant.x2}
-                  y2={derivativePlot.secant.y2}
-                  vectorEffect="non-scaling-stroke"
-                />
-                <line
-                  className="derivative-magnifier-tangent"
-                  x1={derivativePlot.tangent.x1}
-                  y1={derivativePlot.tangent.y1}
-                  x2={derivativePlot.tangent.x2}
-                  y2={derivativePlot.tangent.y2}
-                  vectorEffect="non-scaling-stroke"
-                />
-                <circle
-                  className="derivative-magnifier-point-p"
-                  cx={derivativePlot.pointX}
-                  cy={derivativePlot.pointY}
-                  r={Math.max(1.8, 5 / derivativePlot.crop.zoom)}
-                />
-                <rect
-                  className="derivative-magnifier-point-q"
-                  x={derivativePlot.qX - Math.max(1.5, 4 / derivativePlot.crop.zoom)}
-                  y={derivativePlot.qY - Math.max(1.5, 4 / derivativePlot.crop.zoom)}
-                  width={Math.max(3, 8 / derivativePlot.crop.zoom)}
-                  height={Math.max(3, 8 / derivativePlot.crop.zoom)}
-                  transform={`rotate(45 ${derivativePlot.qX} ${derivativePlot.qY})`}
-                />
-              </svg>
-            </div>
-          )}
           <div className="derivative-deltas">
             <span><small>Δt</small><strong>{derivativeDeltaSeconds.toFixed(1)} s</strong></span>
             <span><small>Δv</small><strong>{derivativeDeltaSpeedKmh.toFixed(2)} km/h</strong></span>
@@ -1247,6 +1167,7 @@ export default function Home() {
   const [isScreenAwake, setIsScreenAwake] = useState(false);
   const [settings, setSettings] = useState<SessionSettings>(DEFAULT_SETTINGS);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDerivativeAnalysisActive, setIsDerivativeAnalysisActive] = useState(false);
 
   const watchId = useRef<number | null>(null);
   const simulationTimer = useRef<number | null>(null);
@@ -1820,7 +1741,7 @@ export default function Home() {
         </>
       )}
 
-      {!isMainSpeedVisible && settings.floating.length > 0 && (
+      {!isDerivativeAnalysisActive && !isMainSpeedVisible && settings.floating.length > 0 && (
         <aside className="floating-metrics" aria-label="Métricas flotantes">
           {settings.floating.includes('speed') && (
             <div className="floating-metric is-speed">
@@ -1902,6 +1823,7 @@ export default function Home() {
           showSpeed={showSpeedInChart}
           showAcceleration={showAccelerationInChart}
           analysisAvailable={!isTracking && sessionEndedAt !== null}
+          onAnalysisModeChange={setIsDerivativeAnalysisActive}
         />
         {gaps.length > 0 && (
           <p className="gap-note">
@@ -1952,24 +1874,26 @@ export default function Home() {
         {sessionError && <p className="session-error" role="alert">{sessionError}</p>}
       </section>
 
-      <section className="controls" aria-label="Controles de medición">
-        <button
-          className="button button-start"
-          type="button"
-          onClick={startTracking}
-          disabled={isTracking}
-        >
-          Empezar
-        </button>
-        <button
-          className="button button-stop"
-          type="button"
-          onClick={stopTracking}
-          disabled={!isTracking}
-        >
-          Parar
-        </button>
-      </section>
+      {!isDerivativeAnalysisActive && (
+        <section className="controls" aria-label="Controles de medición">
+          <button
+            className="button button-start"
+            type="button"
+            onClick={startTracking}
+            disabled={isTracking}
+          >
+            Empezar
+          </button>
+          <button
+            className="button button-stop"
+            type="button"
+            onClick={stopTracking}
+            disabled={!isTracking}
+          >
+            Parar
+          </button>
+        </section>
+      )}
 
       <p className="safety-note">
         Mantené el teléfono seguro y no interactúes con la pantalla mientras estás en movimiento.

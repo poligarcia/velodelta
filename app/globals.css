@@ -687,6 +687,131 @@ h1 {
   text-align: center;
 }
 
+.session-card {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.session-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.session-heading p {
+  margin-bottom: 3px;
+  color: var(--green-dark);
+  font-size: 0.61rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+}
+
+.session-heading h2 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.session-heading small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 680;
+  text-align: right;
+}
+
+.session-description {
+  margin: 10px 0 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.session-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.session-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 9px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.session-download {
+  border: 0;
+  background: var(--ink);
+  color: #fff;
+}
+
+.session-load {
+  position: relative;
+  border: 1px solid #b9c7bc;
+  background: #f3f6f1;
+  color: var(--green-dark);
+  cursor: pointer;
+}
+
+.session-load input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.session-button:not(:disabled):not(.is-disabled):active { transform: scale(0.985); }
+
+.session-button:disabled,
+.session-button.is-disabled {
+  border-color: transparent;
+  background: #e6e9e4;
+  color: #9ca69f;
+  cursor: default;
+}
+
+.session-load:focus-within { outline: 3px solid rgba(22, 160, 100, 0.24); }
+
+.session-privacy {
+  margin: 10px 2px 0;
+  color: #735529;
+  font-size: 0.64rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.session-notice,
+.session-error {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  font-size: 0.7rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.session-notice {
+  background: rgba(22, 160, 100, 0.1);
+  color: var(--green-dark);
+}
+
+.session-error {
+  background: #fff0ed;
+  color: #7d241b;
+}
+
 .controls {
   position: sticky;
   bottom: max(10px, env(safe-area-inset-bottom));

@@ -4,10 +4,20 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 
+import {
+  InvalidSessionFileError,
+  parseSessionJson,
+  serializeSession,
+  type ChartMetric,
+  type FloatingMetric,
+  type SessionPoint,
+  type SessionSettings,
+} from '../lib/session';
 import {
   clamp,
   formatDistance,
@@ -25,19 +35,13 @@ type Sample = {
 
 type Gap = { start: number; end: number };
 type ChartRange = { start: number; end: number };
-type ChartMetric = 'speed' | 'acceleration';
-type FloatingMetric = 'speed' | 'acceleration' | 'time' | 'distance';
-
-type MetricSettings = {
-  chart: ChartMetric[];
-  floating: FloatingMetric[];
-};
 
 const MAX_PLAUSIBLE_SPEED_MPS = 25;
 const MAX_PLAUSIBLE_ACCELERATION_MPS2 = 12;
 const MAX_ACCEPTABLE_ACCURACY_METERS = 80;
+const MAX_SESSION_FILE_BYTES = 25_000_000;
 const SETTINGS_STORAGE_KEY = 'velocimetro-settings-v1';
-const DEFAULT_SETTINGS: MetricSettings = {
+const DEFAULT_SETTINGS: SessionSettings = {
   chart: ['speed'],
   floating: ['speed'],
 };
@@ -73,7 +77,7 @@ type PositionLike = Pick<GeolocationPosition, 'timestamp'> & {
   coords: Pick<GeolocationCoordinates, 'latitude' | 'longitude' | 'accuracy' | 'speed'>;
 };
 
-function readStoredSettings(): MetricSettings {
+function readStoredSettings(): SessionSettings {
   try {
     const stored = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? 'null');
     if (!stored || typeof stored !== 'object') return DEFAULT_SETTINGS;
@@ -624,17 +628,21 @@ export default function Home() {
   const [acceleration, setAcceleration] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [distance, setDistance] = useState(0);
-  const [samples, setSamples] = useState<Sample[]>([]);
+  const [samples, setSamples] = useState<SessionPoint[]>([]);
   const [gaps, setGaps] = useState<Gap[]>([]);
   const [status, setStatus] = useState('Listo para empezar');
   const [error, setError] = useState('');
+  const [sessionError, setSessionError] = useState('');
+  const [sessionNotice, setSessionNotice] = useState('');
+  const [sessionEndedAt, setSessionEndedAt] = useState<number | null>(null);
   const [isMainSpeedVisible, setIsMainSpeedVisible] = useState(true);
   const [isScreenAwake, setIsScreenAwake] = useState(false);
-  const [settings, setSettings] = useState<MetricSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<SessionSettings>(DEFAULT_SETTINGS);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const watchId = useRef<number | null>(null);
   const simulationTimer = useRef<number | null>(null);
+  const sessionFileInput = useRef<HTMLInputElement | null>(null);
   const speedPanel = useRef<HTMLElement | null>(null);
   const wakeLock = useRef<ScreenWakeLockSentinel | null>(null);
   const wakeLockPending = useRef(false);
@@ -660,7 +668,7 @@ export default function Home() {
     return () => document.removeEventListener('keydown', closeWithEscape);
   }, [isSettingsOpen]);
 
-  const storeSettings = (nextSettings: MetricSettings) => {
+  const storeSettings = (nextSettings: SessionSettings) => {
     setSettings(nextSettings);
     try {
       window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
@@ -816,6 +824,7 @@ export default function Home() {
   }, []);
 
   const stopTracking = () => {
+    const stoppedAt = Date.now();
     if (watchId.current !== null && 'geolocation' in navigator) {
       navigator.geolocation.clearWatch(watchId.current);
       watchId.current = null;
@@ -824,16 +833,19 @@ export default function Home() {
       window.clearInterval(simulationTimer.current);
       simulationTimer.current = null;
     }
-    setElapsed(startTime.current ? (Date.now() - startTime.current) / 1000 : 0);
+    setElapsed(startTime.current ? (stoppedAt - startTime.current) / 1000 : 0);
     setSpeed(0);
     setAcceleration(0);
     setIsTracking(false);
     setStatus('Medición detenida');
+    setSessionEndedAt(stoppedAt);
     backgroundGapStart.current = null;
   };
 
   const startTracking = () => {
     setError('');
+    setSessionError('');
+    setSessionNotice('');
 
     if (!('geolocation' in navigator)) {
       setError('Este navegador no tiene GPS disponible.');
@@ -847,6 +859,7 @@ export default function Home() {
     setAcceleration(0);
     setElapsed(0);
     setDistance(0);
+    setSessionEndedAt(null);
     distanceMeters.current = 0;
     previousReading.current = null;
     previousMotionSample.current = null;
@@ -891,12 +904,15 @@ export default function Home() {
         }
 
         const nativeSpeed = position.coords.speed;
-        const usableNativeSpeed =
-          typeof nativeSpeed === 'number' &&
-          Number.isFinite(nativeSpeed) &&
-          nativeSpeed >= 0 &&
-          nativeSpeed <= MAX_PLAUSIBLE_SPEED_MPS
+        const reportedSpeed =
+          typeof nativeSpeed === 'number' && Number.isFinite(nativeSpeed)
             ? nativeSpeed
+            : null;
+        const usableNativeSpeed =
+          reportedSpeed !== null &&
+          reportedSpeed >= 0 &&
+          reportedSpeed <= MAX_PLAUSIBLE_SPEED_MPS
+            ? reportedSpeed
             : null;
         const metersPerSecond = usableNativeSpeed ?? derivedSpeed ?? 0;
         const speedKmh = metersPerSecond * 3.6;
@@ -925,9 +941,15 @@ export default function Home() {
         setSamples((currentSamples) => [
           ...currentSamples,
           {
-            time: timeSeconds,
-            speed: speedKmh,
-            acceleration: accelerationMps2,
+            timestampMs: current.timestamp,
+            elapsedSeconds: timeSeconds,
+            latitude: current.latitude,
+            longitude: current.longitude,
+            accuracyMeters: current.accuracy,
+            reportedSpeedMps: reportedSpeed,
+            speedKmh,
+            accelerationMps2,
+            distanceMeters: distanceMeters.current,
             segment: segmentNumber.current,
           },
         ]);
@@ -997,7 +1019,101 @@ export default function Home() {
     );
   };
 
+  const downloadSession = () => {
+    if (isTracking || sessionEndedAt === null || samples.length === 0) return;
+
+    const json = serializeSession({
+      startedAtMs: startTime.current,
+      endedAtMs: sessionEndedAt,
+      finalState: {
+        elapsedSeconds: elapsed,
+        distanceMeters: distance,
+        speedKmh: speed,
+        accelerationMps2: acceleration,
+      },
+      points: samples,
+      gaps: gaps.map((gap) => ({
+        startSeconds: gap.start,
+        endSeconds: gap.end,
+      })),
+      settings,
+    });
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const date = new Date(sessionEndedAt)
+      .toISOString()
+      .slice(0, 19)
+      .replaceAll(':', '-');
+    link.href = url;
+    link.download = `velodelta-${date}Z.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setSessionNotice(`Sesión descargada · ${samples.length} puntos`);
+    setSessionError('');
+  };
+
+  const loadSession = async (event: ReactChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file || isTracking) return;
+
+    setSessionNotice('');
+    setSessionError('');
+
+    try {
+      if (file.size > MAX_SESSION_FILE_BYTES) {
+        throw new InvalidSessionFileError('El archivo supera el máximo de 25 MB.');
+      }
+      const imported = parseSessionJson(await file.text());
+
+      startTime.current = imported.startedAtMs;
+      distanceMeters.current = imported.finalState.distanceMeters;
+      previousReading.current = null;
+      previousMotionSample.current = null;
+      backgroundGapStart.current = null;
+      segmentNumber.current = imported.points.at(-1)?.segment ?? 0;
+      setSamples(imported.points);
+      setGaps(imported.gaps.map((gap) => ({
+        start: gap.startSeconds,
+        end: gap.endSeconds,
+      })));
+      setElapsed(imported.finalState.elapsedSeconds);
+      setDistance(imported.finalState.distanceMeters);
+      setSpeed(imported.finalState.speedKmh);
+      setAcceleration(imported.finalState.accelerationMps2);
+      setSessionEndedAt(imported.endedAtMs);
+      storeSettings(imported.settings);
+      setStatus(
+        `Sesión cargada · ${new Intl.DateTimeFormat('es-AR', {
+          dateStyle: 'short',
+          timeStyle: 'short',
+        }).format(imported.endedAtMs)}`,
+      );
+      setSessionNotice(`Reconstrucción completa · ${imported.points.length} puntos`);
+    } catch (loadError) {
+      setSessionError(
+        loadError instanceof InvalidSessionFileError
+          ? loadError.message
+          : 'No se pudo leer el archivo de sesión.',
+      );
+    } finally {
+      input.value = '';
+    }
+  };
+
   const formattedDistance = formatDistance(distance);
+  const chartSamples = useMemo<Sample[]>(
+    () => samples.map((sample) => ({
+      time: sample.elapsedSeconds,
+      speed: sample.speedKmh,
+      acceleration: sample.accelerationMps2,
+      segment: sample.segment,
+    })),
+    [samples],
+  );
   const showSpeedInChart = settings.chart.includes('speed');
   const showAccelerationInChart = settings.chart.includes('acceleration');
   const chartMetricLabel = showSpeedInChart
@@ -1171,7 +1287,7 @@ export default function Home() {
           <span>{chartMetricLabel}</span>
         </div>
         <SpeedChart
-          samples={samples}
+          samples={chartSamples}
           gaps={gaps}
           elapsed={elapsed}
           showSpeed={showSpeedInChart}
@@ -1183,6 +1299,47 @@ export default function Home() {
             {formatTime(gaps.reduce((total, gap) => total + gap.end - gap.start, 0))}
           </p>
         )}
+      </section>
+
+      <section className="session-card" aria-labelledby="session-title">
+        <div className="session-heading">
+          <div>
+            <p>GUARDAR Y RECUPERAR</p>
+            <h2 id="session-title">Sesión</h2>
+          </div>
+          <small>Archivo JSON versionado</small>
+        </div>
+        <p className="session-description">
+          Conservá los puntos y el estado final para volver a ver esta medición tal cual terminó.
+        </p>
+        <div className="session-actions">
+          <button
+            className="session-button session-download"
+            type="button"
+            onClick={downloadSession}
+            disabled={isTracking || sessionEndedAt === null || samples.length === 0}
+          >
+            Descargar sesión
+          </button>
+          <label className={`session-button session-load ${isTracking ? 'is-disabled' : ''}`}>
+            Cargar archivo
+            <input
+              ref={sessionFileInput}
+              type="file"
+              accept="application/json,.json"
+              disabled={isTracking}
+              onChange={loadSession}
+            />
+          </label>
+        </div>
+        <p className="session-privacy">
+          El archivo incluye coordenadas GPS precisas. Queda en tu dispositivo y VeloDelta no lo
+          envía a ningún servidor.
+        </p>
+        {sessionNotice && (
+          <p className="session-notice" role="status" aria-live="polite">{sessionNotice}</p>
+        )}
+        {sessionError && <p className="session-error" role="alert">{sessionError}</p>}
       </section>
 
       <section className="controls" aria-label="Controles de medición">

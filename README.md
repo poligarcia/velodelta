@@ -15,6 +15,7 @@ La versión pública se encuentra en [poligarcia.github.io/velodelta](https://po
 - Detección visual de intervalos sin datos al cambiar de aplicación.
 - Bloqueo de pantalla activa cuando el navegador lo admite.
 - Preferencias locales para las series del gráfico y las métricas flotantes.
+- Exportación e importación de sesiones completas en un archivo JSON versionado.
 - Manifest e iconos para instalar la aplicación en la pantalla de inicio.
 
 ## Requisitos
@@ -61,6 +62,7 @@ npm run preview
 - `index.html`: documento principal, metadata, PWA y social preview.
 - `main.tsx`: entrada de React.
 - `lib/tracking.ts`: cálculos y formateo reutilizables, cubiertos por tests.
+- `lib/session.ts`: formato versionado y validación de archivos de sesión.
 - `tests/`: tests unitarios con el runner incluido en Node.js.
 - `public/`: manifest, iconos y tarjeta social.
 - `vite.config.ts`: configuración del build estático con Vite.
@@ -69,6 +71,8 @@ npm run preview
 ## Privacidad
 
 La aplicación no tiene backend y no envía posiciones a un servidor propio. Las lecturas GPS se mantienen en memoria durante la sesión y las preferencias de interfaz se guardan únicamente en `localStorage` del dispositivo.
+
+Al descargar una sesión, el archivo JSON incluye las coordenadas GPS precisas necesarias para reconstruirla. El archivo queda bajo control del usuario y la aplicación no lo transmite a ningún servidor. Conviene tratarlo como información privada y compartirlo sólo de manera intencional.
 
 ## Publicación
 

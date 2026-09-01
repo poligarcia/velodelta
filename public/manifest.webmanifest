@@ -1,0 +1,25 @@
+{
+  "name": "Velocímetro · Tracking en vivo",
+  "short_name": "Velocímetro",
+  "description": "Medí y visualizá tu velocidad y aceleración mientras corrés, pedaleás o te movés.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f2",
+  "theme_color": "#f6f7f2",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
